@@ -1,9 +1,15 @@
-const dotenv = require('dotenv')
-const express = require('express')
+const dotenv = require("dotenv");
+const express = require("express");
 
-dotenv.config()
-const app = require('./src/app')
+dotenv.config();
 
-app.listen(process.env.PORT, ()=>{
-    console.log('Hello from server')
-})
+const app = require("./src/app");
+const connectDB = require("./src/db/config");
+
+connectDB();
+
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+	console.log("Server is running");
+});
