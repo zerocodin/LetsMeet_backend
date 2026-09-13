@@ -31,6 +31,40 @@ const userSchema = new mongoose.Schema(
 			minlength: [6, "Password must be at least 6 characters"],
 			select: false,
 		},
+
+		emailStatus: {
+			type: String,
+			enum: ["REJECTED", "RUNNING", "INREVIEW", "VERIFIED"],
+			default: "INREVIEW",
+		},
+
+		OTP: {
+			type: Number,
+			select: false,
+		},
+
+		OTPexpires: {
+			type: Date,
+			select: false,
+		},
+
+		isVerified: {
+			type: Boolean,
+			default: false,
+		},
+
+		profileImage: {
+			type: String,
+		},
+
+		bio: {
+			type: String,
+			maxlength: [200, "Bio can't exceed 200 characters"],
+		},
+
+		lastLogin: {
+			type: Date,
+		},
 	},
 	{ timestamps: true },
 );

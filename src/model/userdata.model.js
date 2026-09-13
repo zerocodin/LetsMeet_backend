@@ -7,39 +7,7 @@ const dataSchema = new mongoose.Schema(
 			ref: "user",
 		},
 
-		emailStatus: {
-			type: String,
-			enum: ["REJECTED", "RUNNING", "INREVIEW", "VERIFIED"],
-			default: "INREVIEW",
-		},
-
-		OTP: {
-			type: Number,
-			select: false,
-		},
-
-		OTPexprires: {
-			type: Date,
-			select: false,
-		},
-
-		isVerified: {
-			type: Boolean,
-			default: false,
-		},
-
-		profileImage: {
-			type: String,
-		},
-
-		bio: {
-			type: String,
-			mixlength: [200, "Bio can't exceed 200 characters"],
-		},
-
-		lastLogin: {
-			type: Date,
-		},
+		
 	},
 	{ timestamps: true },
 );
