@@ -7,17 +7,17 @@ const getToken = require("../utils/getToken");
 const isProd = process.env.NODE_ENV === "production";
 
 const cookieOptions = {
-  httpOnly: true,
-  secure: isProd ? true : false,
-  sameSite: isProd ? "none" : "lax",
-  maxAge: 7 * 24 * 60 * 60 * 1000,
+	httpOnly: true,
+	secure: isProd ? true : false,
+	sameSite: isProd ? "none" : "lax",
+	maxAge: 7 * 24 * 60 * 60 * 1000,
 };
 
 const flagCookieOptions = {
-  httpOnly: false,
-  secure: isProd ? true : false,
-  sameSite: isProd ? "none" : "lax",
-  maxAge: 7 * 24 * 60 * 60 * 1000,
+	httpOnly: false,
+	secure: isProd ? true : false,
+	sameSite: isProd ? "none" : "lax",
+	maxAge: 7 * 24 * 60 * 60 * 1000,
 };
 
 const userRegister = async (req, res) => {
@@ -108,6 +108,8 @@ const userLogin = async (req, res) => {
 			return res.status(400).json({ message: "Invalid credentials" });
 		}
 
+		user.OTP = undefined;
+		user.OTPexpires = undefined;
 		user.emailStatus = "RUNNING";
 		user.lastLogin = new Date();
 		await user.save({ validateBeforeSave: false });
@@ -137,13 +139,13 @@ const userLogout = async (req, res) => {
 		const user = await userModel.findById(req.user._id);
 		if (!user) {
 			return res.status(404).json({
-				message:"Unauthorized access",
-				success:false,
-			})
+				message: "Unauthorized access",
+				success: false,
+			});
 		}
 
 		user.emailStatus = "VERIFIED";
-		await user.save()
+		await user.save();
 
 		return res
 			.status(200)
@@ -275,17 +277,13 @@ const getMe = async (req, res) => {
 				.status(401)
 				.json({ message: "User not found", success: false });
 		}
+
+		user.emailStatus = "RUNNING";
+		await user.save({ validateBeforeSave: false });
+
 		return res.status(200).json({
 			message: "Logged in successfully",
 			success: true,
-			user: {
-				id: user._id,
-				name: user.name,
-				username: user.username,
-				email: user.email,
-				emailStatus: user.emailStatus,
-				isVerified: user.isVerified,
-			},
 		});
 	} catch (error) {
 		console.error("getMe error:", error);
