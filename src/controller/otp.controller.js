@@ -18,7 +18,7 @@ const sendOtp = async (req, res) => {
 				.json({ message: "User not found", success: false });
 		}
 
-		if (emailStatus === "REJECTED") {
+		if (user.emailStatus === "REJECTED") {
 			return res
 				.status(403)
 				.json({ message: "Email is Resticted", success: false });
