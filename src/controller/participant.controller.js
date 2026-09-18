@@ -14,12 +14,12 @@ const participantModel = require("../model/participant.model");
  */
 const joinMeeting = async (req, res) => {
 	try {
-		const { meetingCode, meetingLink, password } = req.body;
+		const { meetingCode, meetingId, password } = req.body;
 
 		const userId = req.user._id;
 
 		// Find the meeting
-		if (!meetingCode && !meetingLink) {
+		if (!meetingCode && !meetingId) {
 			return res.status(400).json({
 				success: false,
 				message: "Provide meetingCode or meetingLink",

@@ -121,7 +121,7 @@ const meetingSchema = new mongoose.Schema(
 meetingSchema.index({ host: 1, scheduledAt: -1 });
 
 // Auto-generate meetingCode + meetingLink
-meetingSchema.pre("validate", function (next) {
+meetingSchema.pre("validate", function () {
 	if (!this.meetingCode) {
 		this.meetingCode = generateMeetingCode();
 	}

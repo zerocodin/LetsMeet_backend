@@ -1,31 +1,57 @@
 const express = require('express')
 const cookieParser = require("cookie-parser");
 const cors = require('cors')
+const http = require("http");
 
 const authRouter = require('./routes/auth.route')
 const otpRouter = require('./routes/otp.route')
 const userRouter = require("./routes/user.route");
 const meetingRouter = require('./routes/meeting.route')
+// socket
+const { initSocket } = require("./socket/socket");
 
-const app = express()
+const server = express()
+const app = http.createServer(server); // wrapping Express in HTTP server
 
-app.use(
+// middleware
+server.use(
     cors({
         origin:process.env.FRONTEND_URI,
         credentials:true,
     })
 )
-app.use(express.json())
-app.use(express.urlencoded({extended:true}))
-app.use(cookieParser()); 
+server.use(express.json())
+server.use(express.urlencoded({extended:true}))
+server.use(cookieParser()); 
 
-app.get('/',(req, res)=>{
+// demo route
+server.get('/',(req, res)=>{
     res.send("Hello from server");
 })
 
-app.use('/api/auth',authRouter)
-app.use('/api/otp',otpRouter)
-app.use("/api/user", userRouter);
-app.use("/api/meetings", meetingRouter);
+// routes
+server.use('/api/auth',authRouter)
+server.use('/api/otp',otpRouter)
+server.use("/api/user", userRouter);
+server.use("/api/meetings", meetingRouter);
+
+// socket.io
+initSocket(app)
+
+// const startServer = async () => {
+// 	try {
+// 		await connectDB();
+// 		const PORT = process.env.PORT || 5000;
+// 		server.listen(PORT, () => {
+// 			console.log(`🚀 Server running on port ${PORT} in ${process.env.NODE_ENV} mode`);
+// 			console.log(`🔌 Socket.io ready`);
+// 		});
+// 	} catch (err) {
+// 		console.error("Failed to start server:", err);
+// 		process.exit(1);
+// 	}
+// };
+
+// startServer();
 
 module.exports = app
