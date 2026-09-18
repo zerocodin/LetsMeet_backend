@@ -25,6 +25,13 @@ const userSchema = new mongoose.Schema(
 			trim: true,
 		},
 
+		pendingEmail: {
+			type: String,
+			lowercase: true,
+			trim: true,
+			default: null,
+		},
+
 		password: {
 			type: String,
 			required: true,
@@ -55,11 +62,24 @@ const userSchema = new mongoose.Schema(
 
 		profileImage: {
 			type: String,
+			default: "",
+		},
+
+		profileImageFileId: {
+			type: String,
+			default: "",
+			select: false,
 		},
 
 		bio: {
 			type: String,
 			maxlength: [200, "Bio can't exceed 200 characters"],
+		},
+
+		profession: {
+			type: String,
+			maxlength: [50, "Bio can't exceed 50 characters"],
+			default: "",
 		},
 
 		lastLogin: {

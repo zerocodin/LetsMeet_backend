@@ -4,6 +4,8 @@ const cors = require('cors')
 
 const authRouter = require('./routes/auth.route')
 const otpRouter = require('./routes/otp.route')
+const userRouter = require("./routes/user.route");
+const meetingRouter = require('./routes/meeting.route')
 
 const app = express()
 
@@ -23,6 +25,7 @@ app.get('/',(req, res)=>{
 
 app.use('/api/auth',authRouter)
 app.use('/api/otp',otpRouter)
-
+app.use("/api/user", userRouter);
+app.use("/api/meetings", meetingRouter);
 
 module.exports = app
