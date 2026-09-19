@@ -7,6 +7,8 @@ const authRouter = require('./routes/auth.route')
 const otpRouter = require('./routes/otp.route')
 const userRouter = require("./routes/user.route");
 const meetingRouter = require('./routes/meeting.route')
+const friendRouter = require("./routes/friend.route");
+
 // socket
 const { initSocket } = require("./socket/socket");
 
@@ -14,12 +16,22 @@ const server = express()
 const app = http.createServer(server); // wrapping Express in HTTP server
 
 // middleware
+// app.js
+const allowedOrigins = [
+    process.env.FRONTEND_URI,
+].filter(Boolean);
+
 server.use(
     cors({
-        origin:process.env.FRONTEND_URI,
-        credentials:true,
+        origin: (origin, callback) => {
+            // allow requests with no origin (curl, mobile apps, same-origin)
+            if (!origin) return callback(null, true);
+            if (allowedOrigins.includes(origin)) return callback(null, true);
+            return callback(new Error(`CORS blocked: ${origin}`));
+        },
+        credentials: true,
     })
-)
+);
 server.use(express.json())
 server.use(express.urlencoded({extended:true}))
 server.use(cookieParser()); 
@@ -34,6 +46,7 @@ server.use('/api/auth',authRouter)
 server.use('/api/otp',otpRouter)
 server.use("/api/user", userRouter);
 server.use("/api/meetings", meetingRouter);
+server.use("/api/friends", friendRouter);
 
 // socket.io
 initSocket(app)
