@@ -124,14 +124,34 @@ function generateUniqueMeetingCode() {
 const getMyMeetings = async (req, res) => {
 	try {
 		const userId = req.user._id;
-		const { status, page = 1, limit = 10 } = req.query;
+		const { status, role = "host", page = 1, limit = 10 } = req.query;
 
-		const filter = { host: userId };
+		let filter = {};
+		if (role === "host") {
+			filter.host = userId;
+		} else if (role === "participant") {
+			// Find meetings where I have a participant record but I'm not the host
+			const myParticipantRecords = await participantModel
+				.find({ user: userId })
+				.distinct("meeting");
+
+			filter = { _id: { $in: myParticipantRecords }, host: { $ne: userId } };
+		} else {
+			// "all" — either host or participant
+			const myParticipantRecords = await participantModel
+				.find({ user: userId })
+				.distinct("meeting");
+
+			filter = {
+				$or: [{ host: userId }, { _id: { $in: myParticipantRecords } }],
+			};
+		}
+
 		if (status) filter.status = status;
 
 		const skip = (Number(page) - 1) * Number(limit);
 
-		// Fetch meetings 
+		// Fetch meetings
 		const [meetings, total] = await Promise.all([
 			meetingModel
 				.find(filter)
@@ -383,6 +403,67 @@ const cancelMeeting = async (req, res) => {
 	}
 };
 
+/**
+ * @desc    Update meeting recording state (host only)
+ * @route   PATCH /api/meetings/:meetingId/recording
+ * @access  Private (host only)
+ *
+ * Body: { isRecording: boolean }
+ *   - Recording file is stored on the recorder's LOCAL disk.
+ *     We only track the boolean flag so all participants see the REC indicator.
+ */
+const setRecording = async (req, res) => {
+	try {
+		const { meetingId } = req.params;
+		const { isRecording } = req.body;
+		const userId = req.user._id;
+
+		if (typeof isRecording !== "boolean") {
+			return res.status(400).json({
+				success: false,
+				message: "isRecording must be a boolean",
+			});
+		}
+
+		const meeting = await meetingModel.findById(meetingId);
+		if (!meeting) {
+			return res
+				.status(404)
+				.json({ success: false, message: "Meeting not found" });
+		}
+
+		if (meeting.host.toString() !== userId.toString()) {
+			return res.status(403).json({
+				success: false,
+				message: "Only the host can control recording",
+			});
+		}
+
+		if (meeting.status !== "ONGOING") {
+			return res.status(400).json({
+				success: false,
+				message: "Meeting is not ongoing",
+			});
+		}
+
+		meeting.isRecording = isRecording;
+		await meeting.save();
+
+		return res.status(200).json({
+			success: true,
+			message: isRecording ? "Recording started" : "Recording stopped",
+			data: { isRecording: meeting.isRecording },
+		});
+	} catch (err) {
+		console.error("setRecording error:", err);
+		return res.status(500).json({
+			success: false,
+			message: "Failed to update recording state",
+			error: err.message,
+		});
+	}
+};
+
 // generate random password
 /*
 function generatePassword() {
@@ -395,10 +476,12 @@ function generatePassword() {
 	).join("");
 }
 */
+
 module.exports = {
 	createMeeting,
 	getMyMeetings,
 	getMeetingById,
 	updateMeeting,
 	cancelMeeting,
+	setRecording,
 };

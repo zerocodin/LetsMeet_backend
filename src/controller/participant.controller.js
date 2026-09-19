@@ -1,8 +1,8 @@
 const bcrypt = require("bcryptjs");
-const mongoose = require("mongoose");
 
 const meetingModel = require("../model/meeting.model");
 const participantModel = require("../model/participant.model");
+const chatMessageModel = require("../model/chatMessage.model");
 
 /**
  * @desc    Join a meeting (by link → meetingCode, or by _id)
@@ -28,9 +28,7 @@ const joinMeeting = async (req, res) => {
 
 		const query = meetingCode ? { meetingCode } : { _id: meetingId };
 
-		const meeting = await meetingModel
-			.findOne(query)
-			.select("+password"); // password is select:false by default
+		const meeting = await meetingModel.findOne(query).select("+password"); // password is select:false by default
 
 		if (!meeting) {
 			return res.status(404).json({
@@ -58,10 +56,10 @@ const joinMeeting = async (req, res) => {
 		const isHost = meeting.host.toString() === userId.toString();
 
 		const isInvited = meeting.invitedUsers.some(
-			(id) => id.toString() === userId.toString()
+			(id) => id.toString() === userId.toString(),
 		);
 
-		// Private meeting gate 
+		// Private meeting gate
 		if (meeting.isPrivate && !isHost && !isInvited) {
 			return res.status(403).json({
 				success: false,
@@ -69,7 +67,7 @@ const joinMeeting = async (req, res) => {
 			});
 		}
 
-		// Password check 
+		// Password check
 		// Host never needs the password.
 		if (meeting.password && !isHost) {
 			if (!password || password.trim().length === 0) {
@@ -90,7 +88,7 @@ const joinMeeting = async (req, res) => {
 			}
 		}
 
-		// Capacity check 
+		// Capacity check
 		// Count only ACTIVE participants (haven't left)
 		const activeCount = await participantModel.countDocuments({
 			meeting: meeting._id,
@@ -104,16 +102,14 @@ const joinMeeting = async (req, res) => {
 			});
 		}
 
-		// Waiting room / early join timer 
+		// Waiting room / early join timer
 		const now = new Date();
 		const startsInMs = meeting.scheduledAt.getTime() - now.getTime();
 		const startsInSeconds = Math.max(0, Math.floor(startsInMs / 1000));
 
 		// Host bypasses waiting room entirely.
 		const mustWait =
-			!isHost &&
-			!meeting.allowEarlyJoin &&
-			now < meeting.scheduledAt;
+			!isHost && !meeting.allowEarlyJoin && now < meeting.scheduledAt;
 
 		if (mustWait) {
 			return res.status(200).json({
@@ -134,15 +130,14 @@ const joinMeeting = async (req, res) => {
 			});
 		}
 
-		// Mark meeting as ONGOING if it's time 
-		// First joiner (host typically) flips the status.
+		// Mark meeting as ONGOING if it's time
 		if (meeting.status === "SCHEDULED") {
 			meeting.status = "ONGOING";
 			if (!meeting.startedAt) meeting.startedAt = now;
 			await meeting.save();
 		}
 
-		// Create or re-activate participant record 
+		// Create or re-activate participant record
 		let participant = await participantModel.findOne({
 			meeting: meeting._id,
 			user: userId,
@@ -165,7 +160,17 @@ const joinMeeting = async (req, res) => {
 			});
 		}
 
-		// Success response 
+		// System message: user joined
+		await chatMessageModel.create({
+			meeting: meeting._id,
+			user: userId,
+			senderName: "System",
+			senderUsername: "system",
+			message: `${req.user.name} joined the meeting`,
+			type: "SYSTEM",
+		});
+
+		// Success response
 		return res.status(200).json({
 			success: true,
 			status: "JOINED",
@@ -226,7 +231,7 @@ const getMeetingStatus = async (req, res) => {
 		const now = new Date();
 		const startsIn = Math.max(
 			0,
-			Math.floor((meeting.scheduledAt.getTime() - now.getTime()) / 1000)
+			Math.floor((meeting.scheduledAt.getTime() - now.getTime()) / 1000),
 		);
 
 		return res.status(200).json({
@@ -251,7 +256,6 @@ const getMeetingStatus = async (req, res) => {
 	}
 };
 
-
 /**
  * @desc    Update media state (mute/unmute, camera on/off, screen-share)
  *
@@ -274,7 +278,8 @@ const updateMyState = async (req, res) => {
 		if (Object.keys(updates).length === 0) {
 			return res.status(400).json({
 				success: false,
-				message: "Provide at least one of: isMuted, isCameraOff, isScreenSharing",
+				message:
+					"Provide at least one of: isMuted, isCameraOff, isScreenSharing",
 			});
 		}
 
@@ -286,7 +291,7 @@ const updateMyState = async (req, res) => {
 				leftAt: null, // must still be in the meeting
 			},
 			{ $set: updates },
-			{ new: true }
+			{ returnDocument: "after" },
 		);
 
 		if (!participant) {
@@ -340,7 +345,7 @@ const leaveMeeting = async (req, res) => {
 		const participant = await participantModel.findOneAndUpdate(
 			{ meeting: meetingId, user: userId, leftAt: null },
 			{ $set: { leftAt: new Date(), isScreenSharing: false } },
-			{ new: true }
+			{ returnDocument: "after" },
 		);
 
 		if (!participant) {
@@ -360,7 +365,7 @@ const leaveMeeting = async (req, res) => {
 			// Mark all remaining participants as left
 			await participantModel.updateMany(
 				{ meeting: meetingId, leftAt: null },
-				{ $set: { leftAt: new Date(), isScreenSharing: false } }
+				{ $set: { leftAt: new Date(), isScreenSharing: false } },
 			);
 
 			await meeting.save();
@@ -441,10 +446,65 @@ const getParticipants = async (req, res) => {
 	}
 };
 
-module.exports = { 
+/**
+ * @desc    Get full participant history for a meeting
+ * @route   GET /api/meetings/:meetingId/participants/history
+ * @access  Private (host or past participant)
+ */
+const getParticipantHistory = async (req, res) => {
+	try {
+		const { meetingId } = req.params;
+		const userId = req.user._id;
+
+		const meeting = await meetingModel.findById(meetingId).select("host");
+		if (!meeting) {
+			return res
+				.status(404)
+				.json({ success: false, message: "Meeting not found" });
+		}
+
+		const isHost = meeting.host.toString() === userId.toString();
+		const wasParticipant = await participantModel.exists({
+			meeting: meetingId,
+			user: userId,
+		});
+
+		if (!isHost && !wasParticipant) {
+			return res.status(403).json({ success: false, message: "Access denied" });
+		}
+
+		const history = await participantModel
+			.find({ meeting: meetingId })
+			.populate("user", "name username profileImage profession")
+			.sort({ joinedAt: 1 })
+			.lean();
+
+		return res.status(200).json({
+			success: true,
+			count: history.length,
+			data: history.map((p) => ({
+				...p,
+				duration: p.leftAt
+					? Math.floor((new Date(p.leftAt) - new Date(p.joinedAt)) / 1000)
+					: null, // seconds
+				isActive: !p.leftAt,
+			})),
+		});
+	} catch (err) {
+		console.error("getParticipantHistory error:", err);
+		return res.status(500).json({
+			success: false,
+			message: "Failed to fetch history",
+			error: err.message,
+		});
+	}
+};
+
+module.exports = {
 	joinMeeting,
 	getMeetingStatus,
 	updateMyState,
 	leaveMeeting,
 	getParticipants,
+	getParticipantHistory,
 };
