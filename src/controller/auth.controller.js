@@ -286,6 +286,11 @@ const getMe = async (req, res) => {
 		return res.status(200).json({
 			message: "Logged in successfully",
 			success: true,
+			user: {
+				name: user.name,
+				username: user.username,
+				profileImage: user.profileImage,
+			},
 		});
 	} catch (error) {
 		console.error("getMe error:", error);
