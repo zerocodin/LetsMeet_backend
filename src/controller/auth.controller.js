@@ -287,6 +287,7 @@ const getMe = async (req, res) => {
 			message: "Logged in successfully",
 			success: true,
 			user: {
+				_id:user._id,
 				name: user.name,
 				username: user.username,
 				profileImage: user.profileImage,

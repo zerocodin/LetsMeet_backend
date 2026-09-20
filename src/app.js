@@ -8,6 +8,7 @@ const otpRouter = require('./routes/otp.route')
 const userRouter = require("./routes/user.route");
 const meetingRouter = require('./routes/meeting.route')
 const friendRouter = require("./routes/friend.route");
+const notificationRouter = require("./routes/notification.route");
 
 // socket
 const { initSocket } = require("./socket/socket");
@@ -47,6 +48,7 @@ server.use('/api/otp',otpRouter)
 server.use("/api/user", userRouter);
 server.use("/api/meetings", meetingRouter);
 server.use("/api/friends", friendRouter);
+server.use("/api/notifications", notificationRouter);
 
 // socket.io
 initSocket(app)
