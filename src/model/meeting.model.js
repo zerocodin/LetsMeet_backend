@@ -83,7 +83,7 @@ const meetingSchema = new mongoose.Schema(
 		},
 
 		// Access Control
-		allowEarlyJoin: { type: Boolean, default: true },
+		allowEarlyJoin: { type: Boolean, default: false },
 		isPrivate: { type: Boolean, default: false },
 		waitingRoomEnabled: { type: Boolean, default: false },
 
