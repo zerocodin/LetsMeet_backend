@@ -55,6 +55,15 @@ router.delete(
 router.get("/:meetingId/chat", protect, chat.getChatHistory);
 router.delete("/:meetingId/chat/:messageId", protect, chat.deleteChatMessage);
 
+// invitation link
+router.post("/:meetingId/invite", protect, meeting.inviteUsers);
+router.delete("/:meetingId/invite/:userId", protect, meeting.removeInvite);
+router.get(
+	"/:meetingId/invite/candidates",
+	protect,
+	meeting.getInviteCandidates
+);
+
 // meeting generic routes
 router.get("/:meetingId", protect, meeting.getMeetingById);
 router.patch("/:meetingId", protect, meeting.updateMeeting);

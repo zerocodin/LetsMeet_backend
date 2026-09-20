@@ -3,6 +3,9 @@ const bcrypt = require("bcryptjs");
 
 const meetingModel = require("../model/meeting.model");
 const participantModel = require("../model/participant.model");
+const friendRequestModel = require("../model/friend.model");
+const userModel = require("../model/user.model");
+const { createNotification } = require("../utils/notification");
 
 /**
  * @desc    Create a new meeting
@@ -81,11 +84,42 @@ const createMeeting = async (req, res) => {
 			status: "SCHEDULED",
 		});
 
+		if (invitedUsers.length > 0) {
+			const invitedUserDocs = await userModel
+				.find({ _id: { $in: invitedUsers } })
+				.select("name username profileImage")
+				.lean();
+
+			await Promise.all(
+				invitedUserDocs.map((u) =>
+					createNotification({
+						userId: u._id,
+						type: "MEETING_INVITE",
+						title: `You're invited to "${meeting.title}"`,
+						body: `${req.user.name} invited you to a meeting on ${new Date(
+							meeting.scheduledAt,
+						).toLocaleString(undefined, {
+							dateStyle: "medium",
+							timeStyle: "short",
+						})}`,
+						from: req.user._id,
+						link: `/meeting/${meeting.meetingCode}`,
+						meta: {
+							meetingId: meeting._id.toString(),
+							meetingCode: meeting.meetingCode,
+						},
+					}),
+				),
+			);
+		}
+
 		// Response: return credentials to copy/share
 		return res.status(201).json({
 			success: true,
 			message: "Meeting created successfully",
 			data: {
+				_id: meeting._id,
+				title: meeting.title,
 				meetingCode: meeting.meetingCode, // copy to share
 				meetingLink: meeting.meetingLink, // copy to share
 				password: rawPassword || null,
@@ -155,6 +189,8 @@ const getMyMeetings = async (req, res) => {
 		const [meetings, total] = await Promise.all([
 			meetingModel
 				.find(filter)
+				.populate("host", "name username profileImage")
+				.populate("invitedUsers", "name username profileImage")
 				.sort({ scheduledAt: -1 })
 				.skip(skip)
 				.limit(Number(limit))
@@ -464,6 +500,255 @@ const setRecording = async (req, res) => {
 	}
 };
 
+/**
+ * @desc    Invite users (friends) to a meeting
+ * @route   POST /api/meetings/:meetingId/invite
+ * @access  Private (host only)
+ *
+ * Body: { userIds: [ObjectId, ...] }
+ */
+const inviteUsers = async (req, res) => {
+	try {
+		const { meetingId } = req.params;
+		const { userIds = [] } = req.body;
+		const hostId = req.user._id;
+
+		if (!Array.isArray(userIds) || userIds.length === 0) {
+			return res.status(400).json({
+				success: false,
+				message: "userIds must be a non-empty array",
+			});
+		}
+
+		const meeting = await meetingModel.findById(meetingId);
+		if (!meeting) {
+			return res
+				.status(404)
+				.json({ success: false, message: "Meeting not found" });
+		}
+
+		if (meeting.host.toString() !== hostId.toString()) {
+			return res.status(403).json({
+				success: false,
+				message: "Only the host can invite users",
+			});
+		}
+
+		if (meeting.status === "CANCELLED" || meeting.status === "COMPLETED") {
+			return res.status(400).json({
+				success: false,
+				message: `Cannot invite to a ${meeting.status} meeting`,
+			});
+		}
+
+		//  Verify all userIds are valid friends of the host
+		const friendships = await friendRequestModel
+			.find({
+				status: "ACCEPTED",
+				$or: [{ from: hostId }, { to: hostId }],
+			})
+			.lean();
+
+		const friendIds = new Set(
+			friendships.map((f) =>
+				f.from.toString() === hostId.toString()
+					? f.to.toString()
+					: f.from.toString(),
+			),
+		);
+
+		// Filter out users who aren't friends and the host themselves
+		const validIds = userIds
+			.map((id) => id.toString())
+			.filter((id) => friendIds.has(id) && id !== hostId.toString());
+
+		if (validIds.length === 0) {
+			return res.status(400).json({
+				success: false,
+				message: "None of the given users are your friends",
+			});
+		}
+
+		//  Find already-invited (avoid duplicate notifications)
+		const existingInvited = new Set(
+			meeting.invitedUsers.map((u) => u.toString()),
+		);
+
+		const newInviteIds = validIds.filter((id) => !existingInvited.has(id));
+
+		if (newInviteIds.length === 0) {
+			return res.status(200).json({
+				success: true,
+				message: "All selected users were already invited",
+				invitedCount: 0,
+			});
+		}
+
+		//  Update meeting
+		meeting.invitedUsers.push(...newInviteIds.map((id) => id));
+
+		await meeting.save();
+
+		//  Notify each newly invited user
+		const invitedUsers = await userModel
+			.find({ _id: { $in: newInviteIds } })
+			.select("name username profileImage")
+			.lean();
+
+		await Promise.all(
+			invitedUsers.map((u) =>
+				createNotification({
+					userId: u._id,
+					type: "MEETING_INVITE",
+					title: `You're invited to "${meeting.title}"`,
+					body: `${req.user.name} invited you to a meeting on ${new Date(
+						meeting.scheduledAt,
+					).toLocaleString(undefined, {
+						dateStyle: "medium",
+						timeStyle: "short",
+					})}`,
+					from: hostId,
+					link: `/meeting/${meeting.meetingCode}`,
+					meta: {
+						meetingId: meeting._id.toString(),
+						meetingCode: meeting.meetingCode,
+					},
+				}),
+			),
+		);
+
+		return res.status(200).json({
+			success: true,
+			message: `Invited ${newInviteIds.length} user(s)`,
+			invitedCount: newInviteIds.length,
+			data: {
+				invitedUsers: invitedUsers,
+				totalInvited: meeting.invitedUsers.length,
+			},
+		});
+	} catch (err) {
+		console.error("inviteUsers error:", err);
+		return res.status(500).json({
+			success: false,
+			message: "Failed to invite users",
+			error: err.message,
+		});
+	}
+};
+
+/**
+ * @desc    Remove an invite
+ * @route   DELETE /api/meetings/:meetingId/invite/:userId
+ * @access  Private (host only)
+ */
+const removeInvite = async (req, res) => {
+	try {
+		const { meetingId, userId } = req.params;
+		const hostId = req.user._id;
+
+		const meeting = await meetingModel.findById(meetingId);
+		if (!meeting) {
+			return res
+				.status(404)
+				.json({ success: false, message: "Meeting not found" });
+		}
+
+		if (meeting.host.toString() !== hostId.toString()) {
+			return res.status(403).json({
+				success: false,
+				message: "Only the host can remove invites",
+			});
+		}
+
+		const before = meeting.invitedUsers.length;
+		meeting.invitedUsers = meeting.invitedUsers.filter(
+			(u) => u.toString() !== userId,
+		);
+
+		if (meeting.invitedUsers.length === before) {
+			return res.status(404).json({
+				success: false,
+				message: "User was not invited",
+			});
+		}
+
+		await meeting.save();
+
+		return res.status(200).json({
+			success: true,
+			message: "Invite removed",
+			data: { removedUserId: userId },
+		});
+	} catch (err) {
+		console.error("removeInvite error:", err);
+		return res.status(500).json({
+			success: false,
+			message: "Failed to remove invite",
+			error: err.message,
+		});
+	}
+};
+
+/**
+ * @desc    Get invite candidates — friends not yet invited to this meeting
+ * @route   GET /api/meetings/:meetingId/invite/candidates
+ * @access  Private (host only)
+ */
+const getInviteCandidates = async (req, res) => {
+	try {
+		const { meetingId } = req.params;
+		const hostId = req.user._id;
+
+		const meeting = await meetingModel
+			.findById(meetingId)
+			.select("host invitedUsers");
+		if (!meeting) {
+			return res
+				.status(404)
+				.json({ success: false, message: "Meeting not found" });
+		}
+
+		if (meeting.host.toString() !== hostId.toString()) {
+			return res.status(403).json({
+				success: false,
+				message: "Only the host can view candidates",
+			});
+		}
+
+		// Get all friends of the host
+		const friendships = await friendRequestModel
+			.find({
+				status: "ACCEPTED",
+				$or: [{ from: hostId }, { to: hostId }],
+			})
+			.populate("from", "name username email profileImage profession")
+			.populate("to", "name username email profileImage profession")
+			.lean();
+
+		const friends = friendships.map((f) =>
+			f.from._id.toString() === hostId.toString() ? f.to : f.from,
+		);
+
+		// Filter out already-invited
+		const invitedSet = new Set(meeting.invitedUsers.map((u) => u.toString()));
+
+		const candidates = friends.filter((f) => !invitedSet.has(f._id.toString()));
+
+		return res.status(200).json({
+			success: true,
+			count: candidates.length,
+			data: candidates,
+		});
+	} catch (err) {
+		console.error("getInviteCandidates error:", err);
+		return res.status(500).json({
+			success: false,
+			message: "Failed to fetch candidates",
+			error: err.message,
+		});
+	}
+};
+
 // generate random password
 /*
 function generatePassword() {
@@ -484,4 +769,7 @@ module.exports = {
 	updateMeeting,
 	cancelMeeting,
 	setRecording,
+	inviteUsers,
+	removeInvite,
+	getInviteCandidates,
 };
