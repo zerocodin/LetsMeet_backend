@@ -22,7 +22,7 @@ const createMeeting = async (req, res) => {
 			maxParticipants = 100,
 			invitedUsers = [],
 			password: rawPassword,
-			allowEarlyJoin = true,
+			allowEarlyJoin = false,
 			waitingRoomEnabled = false,
 		} = req.body;
 
@@ -749,6 +749,85 @@ const getInviteCandidates = async (req, res) => {
 	}
 };
 
+/**
+ * @desc    Force-start a scheduled meeting (host only)
+ * @route   POST /api/meetings/:meetingId/start-now
+ * @access  Private (host only)
+ *
+ * Behavior:
+ *   - Sets status to ONGOING
+ *   - Sets startedAt to now (if not already)
+ */
+const startMeetingNow = async (req, res) => {
+	try {
+		const { meetingId } = req.params;
+		const userId = req.user._id;
+
+		const meeting = await meetingModel.findById(meetingId);
+		if (!meeting) {
+			return res
+				.status(404)
+				.json({ success: false, message: "Meeting not found" });
+		}
+
+		if (meeting.host.toString() !== userId.toString()) {
+			return res.status(403).json({
+				success: false,
+				message: "Only the host can start this meeting",
+			});
+		}
+
+		if (meeting.status === "CANCELLED") {
+			return res
+				.status(400)
+				.json({ success: false, message: "Meeting was cancelled" });
+		}
+
+		if (meeting.status === "COMPLETED") {
+			return res
+				.status(400)
+				.json({ success: false, message: "Meeting already ended" });
+		}
+
+		if (meeting.status === "ONGOING") {
+			return res.status(200).json({
+				success: true,
+				message: "Meeting already ongoing",
+				data: { status: meeting.status, startedAt: meeting.startedAt },
+			});
+		}
+
+		const now = new Date();
+
+		// Flip it to ONGOING
+		meeting.status = "ONGOING";
+		
+		if (!meeting.startedAt) meeting.startedAt = now;
+
+		if (meeting.scheduledAt > now) {
+			meeting.scheduledAt = now;
+		}
+
+		await meeting.save();
+
+		return res.status(200).json({
+			success: true,
+			message: "Meeting started",
+			data: {
+				status: meeting.status,
+				startedAt: meeting.startedAt,
+			},
+		});
+	} catch (err) {
+		console.error("startMeetingNow error:", err);
+		return res.status(500).json({
+			success: false,
+			message: "Failed to start meeting",
+			error: err.message,
+		});
+	}
+};
+
 // generate random password
 /*
 function generatePassword() {
@@ -772,4 +851,5 @@ module.exports = {
 	inviteUsers,
 	removeInvite,
 	getInviteCandidates,
+	startMeetingNow,
 };

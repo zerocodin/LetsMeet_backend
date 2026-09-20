@@ -50,6 +50,11 @@ router.delete(
 	protect,
 	host.removeParticipant,
 );
+router.post(
+	"/:meetingId/participants/:participantId/stop-share",
+	protect,
+	host.stopScreenShare
+);
 
 // Chat history + delete
 router.get("/:meetingId/chat", protect, chat.getChatHistory);
@@ -63,6 +68,8 @@ router.get(
 	protect,
 	meeting.getInviteCandidates
 );
+
+router.post("/:meetingId/start-now", protect, meeting.startMeetingNow); 
 
 // meeting generic routes
 router.get("/:meetingId", protect, meeting.getMeetingById);

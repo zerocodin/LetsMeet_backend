@@ -277,10 +277,63 @@ const demoteFromCohost = async (req, res) => {
 	}
 };
 
+/**
+ * @desc    Host forces a participant to stop screen sharing
+ * @route   POST /api/meetings/:meetingId/participants/:participantId/stop-share
+ * @access  Private (host only)
+ */
+const stopScreenShare = async (req, res) => {
+	try {
+		const { meetingId, participantId } = req.params;
+		const userId = req.user._id;
+
+		const meeting = await meetingModel.findById(meetingId).select("host");
+		if (!meeting) {
+			return res
+				.status(404)
+				.json({ success: false, message: "Meeting not found" });
+		}
+
+		if (meeting.host.toString() !== userId.toString()) {
+			return res.status(403).json({
+				success: false,
+				message: "Only the host can stop another user's share",
+			});
+		}
+
+		const participant = await participantModel.findOneAndUpdate(
+			{ _id: participantId, meeting: meetingId, leftAt: null },
+			{ $set: { isScreenSharing: false } },
+			{ returnDocument: "after" }
+		);
+
+		if (!participant) {
+			return res.status(404).json({
+				success: false,
+				message: "Participant not found or already left",
+			});
+		}
+
+		return res.status(200).json({
+			success: true,
+			message: "Screen share stopped",
+			data: { participantId, isScreenSharing: false },
+		});
+	} catch (err) {
+		console.error("stopScreenShare error:", err);
+		return res.status(500).json({
+			success: false,
+			message: "Failed to stop screen share",
+			error: err.message,
+		});
+	}
+};
+
 module.exports = {
 	muteParticipant,
 	unmuteParticipant,
 	removeParticipant,
 	promoteToCohost,
 	demoteFromCohost,
+	stopScreenShare,
 };
