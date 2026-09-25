@@ -67,8 +67,7 @@ const joinMeeting = async (req, res) => {
 			});
 		}
 
-		// Password check
-		// Host never needs the password.
+		// Password check and  Host never needs the password.
 		if (meeting.password && !isHost) {
 			if (!password || password.trim().length === 0) {
 				return res.status(401).json({
@@ -109,7 +108,9 @@ const joinMeeting = async (req, res) => {
 
 		// Host bypasses waiting room entirely.
 		const mustWait =
-			!isHost && !meeting.allowEarlyJoin && now < meeting.scheduledAt;
+			meeting.status !== "ONGOING" &&
+			!meeting.allowEarlyJoin &&
+			now < meeting.scheduledAt;
 
 		if (mustWait) {
 			return res.status(200).json({
@@ -124,6 +125,8 @@ const joinMeeting = async (req, res) => {
 						scheduledAt: meeting.scheduledAt,
 						duration: meeting.duration,
 						host: meeting.host,
+						status: meeting.status,
+						startedAt: meeting.startedAt,
 					},
 					startsIn: startsInSeconds, // frontend counts down from this
 				},
@@ -243,7 +246,9 @@ const getMeetingStatus = async (req, res) => {
 				isJoinable:
 					meeting.status !== "CANCELLED" &&
 					meeting.status !== "COMPLETED" &&
-					(meeting.allowEarlyJoin || startsIn === 0),
+					(meeting.status === "ONGOING" ||
+						meeting.allowEarlyJoin ||
+						startsIn === 0),
 			},
 		});
 	} catch (err) {

@@ -1,14 +1,17 @@
 const { Server } = require("socket.io");
 const jwt = require("jsonwebtoken");
-const cookie = require("cookie"); 
+const cookie = require("cookie");
+
 const userModel = require("../model/user.model");
 const meetingModel = require("../model/meeting.model");
 const participantModel = require("../model/participant.model");
+const chatMessageModel = require("../model/chatMessage.model");
 
 // In-memory map: meetingId → Set of { userId, socketId }
 const rooms = new Map();
 
 let io;
+const getIO = () => io;
 
 const initSocket = (httpServer) => {
 	io = new Server(httpServer, {
@@ -19,7 +22,7 @@ const initSocket = (httpServer) => {
 		pingTimeout: 60000,
 	});
 
-	// Auth middleware on handshake 
+	// Auth middleware on handshake
 	io.use(async (socket, next) => {
 		try {
 			const rawCookie = socket.handshake.headers?.cookie;
@@ -40,7 +43,9 @@ const initSocket = (httpServer) => {
 			}
 
 			const decoded = jwt.verify(token, process.env.JWT_SECRET);
-			const user = await userModel.findById(decoded.userId).select("name username email profileImage");
+			const user = await userModel
+				.findById(decoded.userId)
+				.select("name username email profileImage");
 
 			if (!user) {
 				return next(new Error("Authentication error: user not found"));
@@ -54,9 +59,13 @@ const initSocket = (httpServer) => {
 		}
 	});
 
-	//  Connection handler 
+	//  Connection handler
 	io.on("connection", (socket) => {
-		console.log(`Socket connected: ${socket.id} (user: ${socket.user.username})`);
+		console.log(
+			`Socket connected: ${socket.id} (user: ${socket.user.username})`,
+		);
+
+		socket.join(`user:${socket.user._id.toString()}`);
 
 		// JOIN MEETING ROOM
 		socket.on("join-meeting", async ({ meetingId }, callback) => {
@@ -89,12 +98,10 @@ const initSocket = (httpServer) => {
 				rooms.get(meetingId).set(socket.user._id.toString(), {
 					socketId: socket.id,
 					participantId: participant._id.toString(),
-					user: {
-						_id: socket.user._id,
-						name: socket.user.name,
-						username: socket.user.username,
-						profileImage: socket.user.profileImage,
-					},
+					userId: socket.user._id,
+					name: socket.user.name,
+					username: socket.user.username,
+					profileImage: socket.user.profileImage,
 					role: participant.role,
 					isMuted: participant.isMuted,
 					isCameraOff: participant.isCameraOff,
@@ -102,9 +109,20 @@ const initSocket = (httpServer) => {
 				});
 
 				// Send existing participants list to the new joiner
-				const existing = Array.from(rooms.get(meetingId).values()).filter(
-					(p) => p.socketId !== socket.id
-				);
+				const existing = Array.from(rooms.get(meetingId).values())
+					.filter((p) => p.socketId !== socket.id)
+					.map((p) => ({
+						socketId: p.socketId,
+						participantId: p.participantId,
+						userId: p.userId,
+						name: p.name,
+						username: p.username,
+						profileImage: p.profileImage,
+						role: p.role,
+						isMuted: p.isMuted,
+						isCameraOff: p.isCameraOff,
+						isScreenSharing: p.isScreenSharing,
+					}));
 
 				callback?.({
 					success: true,
@@ -206,32 +224,60 @@ const initSocket = (httpServer) => {
 		});
 
 		// IN-MEETING CHAT
-		socket.on("send-chat", ({ message }, callback) => {
+		socket.on("send-chat", async ({ message }, callback) => {
 			try {
-				if (!socket.meetingId || !message?.trim()) return;
+				if (!socket.meetingId || !message?.trim()) {
+					return callback?.({ success: false, message: "Invalid message" });
+				}
 
+				const trimmed = message.trim().slice(0, 1000);
+
+				// Persist first
+				const saved = await chatMessageModel.create({
+					meeting: socket.meetingId,
+					user: socket.user._id,
+					senderName: socket.user.name,
+					senderUsername: socket.user.username,
+					senderProfileImage: socket.user.profileImage || "",
+					message: trimmed,
+					type: "USER",
+				});
+
+				// Broadcast the persisted doc
 				const payload = {
-					_id: `${Date.now()}-${socket.id}`,
+					_id: saved._id.toString(),
+					meeting: socket.meetingId,
 					from: {
 						userId: socket.user._id,
-						name: socket.user.name,
-						username: socket.user.username,
-						profileImage: socket.user.profileImage,
+						name: saved.senderName,
+						username: saved.senderUsername,
+						profileImage: saved.senderProfileImage,
 					},
-					message: message.trim(),
-					sentAt: new Date().toISOString(),
+					message: saved.message,
+					sentAt: saved.createdAt.toISOString(),
+					type: saved.type,
 				};
 
 				const roomName = `meeting:${socket.meetingId}`;
-				io.to(roomName).emit("chat-message", payload); // everyone including sender
+				io.to(roomName).emit("chat-message", payload);
+
 				callback?.({ success: true, data: payload });
 			} catch (err) {
-				callback?.({ success: false, message: err.message });
+				console.error("send-chat error:", err);
+				callback?.({ success: false, message: "Failed to send message" });
 			}
 		});
 
-		// HOST ACTIONS (server-side verified in REST too)
-		// These just notify participants in real-time.
+		socket.on("chat-message-deleted", ({ meetingId, messageId }) => {
+			if (!meetingId || !messageId) return;
+			if (socket.meetingId !== meetingId) return; // safety: only for your room
+
+			socket
+				.to(`meeting:${meetingId}`)
+				.emit("chat-message-deleted", { messageId });
+		});
+
+		// HOST ACTIONS
 		socket.on("host-mute-user", ({ targetSocketId }) => {
 			io.to(targetSocketId).emit("force-muted");
 		});
@@ -243,6 +289,28 @@ const initSocket = (httpServer) => {
 		socket.on("host-end-meeting", () => {
 			if (!socket.meetingId) return;
 			io.to(`meeting:${socket.meetingId}`).emit("meeting-ended");
+		});
+
+		//  Recording started
+		socket.on("recording-started", () => {
+			if (!socket.meetingId) return;
+			socket.to(`meeting:${socket.meetingId}`).emit("recording-started", {
+				byUserId: socket.user._id,
+				byName: socket.user.name,
+			});
+		});
+
+		//  Recording stopped
+		socket.on("recording-stopped", () => {
+			if (!socket.meetingId) return;
+			socket.to(`meeting:${socket.meetingId}`).emit("recording-stopped", {
+				byUserId: socket.user._id,
+			});
+		});
+
+		// forced to stop user host
+		socket.on("host-stop-share", ({ targetSocketId }) => {
+			io.to(targetSocketId).emit("force-stop-share");
 		});
 
 		// LEAVE / DISCONNECT
@@ -290,7 +358,7 @@ async function handleLeave(socket, explicit) {
 		if (explicit) {
 			await participantModel.findOneAndUpdate(
 				{ meeting: meetingId, user: socket.user._id, leftAt: null },
-				{ $set: { leftAt: new Date(), isScreenSharing: false } }
+				{ $set: { leftAt: new Date(), isScreenSharing: false } },
 			);
 		}
 
@@ -310,4 +378,4 @@ const getRoomParticipants = (meetingId) => {
 	return Array.from(room.values());
 };
 
-module.exports = { initSocket, getRoomParticipants };
+module.exports = { initSocket, getRoomParticipants, getIO };
