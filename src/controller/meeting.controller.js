@@ -236,12 +236,42 @@ const getMyMeetings = async (req, res) => {
 			totalParticipants: totalMap[m._id.toString()] || 0,
 		}));
 
+		// Counts for the role tabs (hosted / joined / all)
+		const [hostedCount, joinedCount, allCount] = await Promise.all([
+			meetingModel.countDocuments({ host: userId }),
+			meetingModel.countDocuments({
+				_id: {
+					$in: await participantModel
+						.find({ user: userId })
+						.distinct("meeting"),
+				},
+				host: { $ne: userId },
+			}),
+			meetingModel.countDocuments({
+				$or: [
+					{ host: userId },
+					{
+						_id: {
+							$in: await participantModel
+								.find({ user: userId })
+								.distinct("meeting"),
+						},
+					},
+				],
+			}),
+		]);
+
 		return res.status(200).json({
 			success: true,
 			count: enriched.length,
 			total,
 			page: Number(page),
 			totalPages: Math.ceil(total / Number(limit)),
+			counts: {
+				host: hostedCount,
+				participant: joinedCount,
+				all: allCount,
+			},
 			data: enriched,
 		});
 	} catch (err) {
