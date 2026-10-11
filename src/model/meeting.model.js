@@ -69,6 +69,11 @@ const meetingSchema = new mongoose.Schema(
 			default: null,
 		},
 
+		reminderSentAt: {
+			type: Date,
+			default: null,
+		},
+
 		endedAt: {
 			type: Date,
 			default: null,
@@ -126,7 +131,6 @@ meetingSchema.pre("validate", function () {
 		this.meetingCode = generateMeetingCode();
 	}
 	if (!this.meetingLink && this.meetingCode) {
-	
 		const baseUrl = process.env.FRONTEND_URI || "http://localhost:3000";
 		this.meetingLink = `${baseUrl}/meeting/${this.meetingCode}`;
 	}
