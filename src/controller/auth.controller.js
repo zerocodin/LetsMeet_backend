@@ -5,12 +5,14 @@ const userModel = require("../model/user.model");
 const getToken = require("../utils/getToken");
 
 const isProd = process.env.NODE_ENV === "production";
+const cookieDomain = process.env.COOKIE_DOMAIN
 
 const cookieOptions = {
 	httpOnly: true,
 	secure: isProd ? true : false,
 	sameSite: isProd ? "none" : "lax",
 	maxAge: 7 * 24 * 60 * 60 * 1000,
+	path:"/",
 	...(isProd && { partitioned: true }),
 };
 
@@ -19,6 +21,7 @@ const flagCookieOptions = {
 	secure: isProd ? true : false,
 	sameSite: isProd ? "none" : "lax",
 	maxAge: 7 * 24 * 60 * 60 * 1000,
+	path:"/",
 	...(isProd && { partitioned: true }),
 };
 
