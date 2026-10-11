@@ -1,5 +1,24 @@
 const mongoose = require("mongoose");
 
+/**
+ * A single contiguous period a user was in the meeting.
+ * Each join creates a new session. Rejoining after leaving = new session.
+ */
+const sessionSchema = new mongoose.Schema(
+	{
+		joinedAt: {
+			type: Date,
+			required: true,
+			default: Date.now,
+		},
+		leftAt: {
+			type: Date,
+			default: null,
+		},
+	},
+	{ _id: false }
+);
+
 const participantSchema = new mongoose.Schema(
 	{
 		meeting: {
@@ -19,6 +38,10 @@ const participantSchema = new mongoose.Schema(
 			enum: ["HOST", "COHOST", "PARTICIPANT"],
 			default: "PARTICIPANT",
 		},
+
+		// joinedAt = current session &  leftAt = null if active, else when left
+		// When a user rejoins, these are updated to the new session.
+
 		joinedAt: {
 			type: Date,
 			default: Date.now,
@@ -27,6 +50,13 @@ const participantSchema = new mongoose.Schema(
 			type: Date,
 			default: null,
 		},
+
+		// Full history of sessions  
+		sessions: {
+			type: [sessionSchema],
+			default: [],
+		},
+
 		isMuted: { type: Boolean, default: false },
 		isCameraOff: { type: Boolean, default: false },
 		isScreenSharing: { type: Boolean, default: false },
@@ -34,7 +64,7 @@ const participantSchema = new mongoose.Schema(
 	{ timestamps: true }
 );
 
-// A user can only have ONE active participant record per meeting
+// A user can only have ONE participant record per meeting
 participantSchema.index({ meeting: 1, user: 1 }, { unique: true });
 
 const participantModel = mongoose.model("participant", participantSchema);

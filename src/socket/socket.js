@@ -16,7 +16,7 @@ const getIO = () => io;
 const initSocket = (httpServer) => {
 	io = new Server(httpServer, {
 		cors: {
-			origin: process.env.FRONTEND_URI || "http://localhost:3000",
+			origin: process.env.FRONTEND_URI || "http://localhost:5173",
 			credentials: true,
 		},
 		pingTimeout: 60000,
@@ -356,10 +356,20 @@ async function handleLeave(socket, explicit) {
 		// Optionally mark participant left in DB for explicit leave
 		// (REST leaveMeeting also does this — idempotent)
 		if (explicit) {
-			await participantModel.findOneAndUpdate(
-				{ meeting: meetingId, user: socket.user._id, leftAt: null },
-				{ $set: { leftAt: new Date(), isScreenSharing: false } },
-			);
+			const now = new Date();
+			const participant = await participantModel.findOne({
+				meeting: meetingId,
+				user: socket.user._id,
+				leftAt: null,
+			});
+
+			if (participant) {
+				participant.leftAt = now;
+				participant.isScreenSharing = false;
+				const last = participant.sessions[participant.sessions.length - 1];
+				if (last && !last.leftAt) last.leftAt = now;
+				await participant.save();
+			}
 		}
 
 		socket.meetingId = null;

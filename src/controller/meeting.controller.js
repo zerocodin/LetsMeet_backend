@@ -418,10 +418,21 @@ const cancelMeeting = async (req, res) => {
 		meeting.endedAt = new Date();
 		await meeting.save();
 
-		// Mark all participants as left
-		await participantModel.updateMany(
-			{ meeting: meetingId, leftAt: null },
-			{ $set: { leftAt: new Date(), isScreenSharing: false } },
+		// Close all active participants and their sessions
+		const activeParticipants = await participantModel.find({
+			meeting: meetingId,
+			leftAt: null,
+		});
+
+		const closeTime = new Date();
+		await Promise.all(
+			activeParticipants.map((p) => {
+				p.leftAt = closeTime;
+				p.isScreenSharing = false;
+				const last = p.sessions[p.sessions.length - 1];
+				if (last && !last.leftAt) last.leftAt = closeTime;
+				return p.save();
+			}),
 		);
 
 		return res.status(200).json({
@@ -801,7 +812,7 @@ const startMeetingNow = async (req, res) => {
 
 		// Flip it to ONGOING
 		meeting.status = "ONGOING";
-		
+
 		if (!meeting.startedAt) meeting.startedAt = now;
 
 		if (meeting.scheduledAt > now) {

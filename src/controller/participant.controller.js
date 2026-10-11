@@ -147,19 +147,25 @@ const joinMeeting = async (req, res) => {
 		});
 
 		if (participant) {
-			// Already joined before → rejoin (reset leftAt)
-			if (participant.leftAt) {
+			// Already active in this meeting → idempotent, no new session
+			if (!participant.leftAt) {
+				// Nothing to change
+			} else {
+				// Rejoin — start a new session
 				participant.leftAt = null;
 				participant.joinedAt = now;
+				participant.sessions.push({ joinedAt: now, leftAt: null });
 				await participant.save();
 			}
-			// If already active, just return existing record (idempotent)
 		} else {
+			// Brand new participant — create with first session
 			participant = await participantModel.create({
 				meeting: meeting._id,
 				user: userId,
 				role: isHost ? "HOST" : "PARTICIPANT",
 				joinedAt: now,
+				leftAt: null,
+				sessions: [{ joinedAt: now, leftAt: null }],
 			});
 		}
 
@@ -346,12 +352,28 @@ const leaveMeeting = async (req, res) => {
 			});
 		}
 
-		// Mark participant as left
-		const participant = await participantModel.findOneAndUpdate(
-			{ meeting: meetingId, user: userId, leftAt: null },
-			{ $set: { leftAt: new Date(), isScreenSharing: false } },
-			{ returnDocument: "after" },
-		);
+		// Mark participant as left AND close the last session
+		const now = new Date();
+
+		// Fetch first so we can push into sessions array
+		const participant = await participantModel.findOne({
+			meeting: meetingId,
+			user: userId,
+			leftAt: null,
+		});
+
+		if (participant) {
+			participant.leftAt = now;
+			participant.isScreenSharing = false;
+
+			// Close the last open session
+			const lastSession = participant.sessions[participant.sessions.length - 1];
+			if (lastSession && !lastSession.leftAt) {
+				lastSession.leftAt = now;
+			}
+
+			await participant.save();
+		}
 
 		if (!participant) {
 			return res.status(404).json({
@@ -478,22 +500,48 @@ const getParticipantHistory = async (req, res) => {
 			return res.status(403).json({ success: false, message: "Access denied" });
 		}
 
-		const history = await participantModel
+		const participants = await participantModel
 			.find({ meeting: meetingId })
 			.populate("user", "name username profileImage profession")
-			.sort({ joinedAt: 1 })
 			.lean();
+
+		// Flatten sessions → one row per session
+		const history = [];
+		for (const p of participants) {
+			// Use sessions[] if present; else fall back to top-level (legacy docs)
+			const sessions =
+				p.sessions && p.sessions.length > 0
+					? p.sessions
+					: [{ joinedAt: p.joinedAt, leftAt: p.leftAt }];
+
+			sessions.forEach((s, idx) => {
+				const end = s.leftAt ? new Date(s.leftAt).getTime() : Date.now();
+				const start = new Date(s.joinedAt).getTime();
+				const duration = Math.max(0, Math.floor((end - start) / 1000));
+
+				history.push({
+					_id: `${p._id}-s${idx}`, // synthetic id for React keys
+					participantId: p._id,
+					user: p.user,
+					role: p.role,
+					joinedAt: s.joinedAt,
+					leftAt: s.leftAt,
+					duration, // seconds
+					isActive: !s.leftAt,
+					sessionIndex: idx,
+				});
+			});
+		}
+
+		// Newest first
+		history.sort(
+			(a, b) => new Date(b.joinedAt).getTime() - new Date(a.joinedAt).getTime(),
+		);
 
 		return res.status(200).json({
 			success: true,
 			count: history.length,
-			data: history.map((p) => ({
-				...p,
-				duration: p.leftAt
-					? Math.floor((new Date(p.leftAt) - new Date(p.joinedAt)) / 1000)
-					: null, // seconds
-				isActive: !p.leftAt,
-			})),
+			data: history,
 		});
 	} catch (err) {
 		console.error("getParticipantHistory error:", err);
