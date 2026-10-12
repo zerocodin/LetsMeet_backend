@@ -53,7 +53,7 @@ const createMeeting = async (req, res) => {
 		// Generate meeting code + link
 		// Format: abc-defg-hij (Zoom-style)
 		const meetingCode = generateUniqueMeetingCode();
-		const clientUrl = process.env.FRONTEND_URI || "http://localhost:3000";
+		const clientUrl = process.env.FRONTEND_URI || "http://localhost:5173";
 		const meetingLink = `${clientUrl}/meeting/${meetingCode}`;
 
 		// Auto generate password
@@ -107,6 +107,7 @@ const createMeeting = async (req, res) => {
 						meta: {
 							meetingId: meeting._id.toString(),
 							meetingCode: meeting.meetingCode,
+							meetingStatus: meeting.status,
 						},
 					}),
 				),
@@ -393,9 +394,22 @@ const updateMeeting = async (req, res) => {
 			"maxParticipants",
 		];
 
+		// Capture the old scheduledAt BEFORE we apply updates
+		const oldScheduledAt = meeting.scheduledAt;
+
 		allowed.forEach((key) => {
 			if (req.body[key] !== undefined) meeting[key] = req.body[key];
 		});
+
+		// If scheduledAt changed, reset the reminder so it fires again
+		if (
+			req.body.scheduledAt !== undefined &&
+			(!oldScheduledAt ||
+				new Date(req.body.scheduledAt).getTime() !==
+					new Date(oldScheduledAt).getTime())
+		) {
+			meeting.reminderSentAt = null;
+		}
 
 		await meeting.save();
 
@@ -464,6 +478,43 @@ const cancelMeeting = async (req, res) => {
 				return p.save();
 			}),
 		);
+
+		// Notify the host + all invited users that the meeting was cancelled
+		try {
+			const notifiedIds = new Set();
+
+			// All invited users
+			meeting.invitedUsers?.forEach((id) => notifiedIds.add(id.toString()));
+			// All participants who ever joined (excluding the host who cancelled it)
+			await participantModel
+				.find({ meeting: meetingId })
+				.distinct("user")
+				.then((userIds) => {
+					userIds.forEach((id) => {
+						const str = id.toString();
+						if (str !== userId.toString()) notifiedIds.add(str);
+					});
+				});
+
+			await Promise.all(
+				Array.from(notifiedIds).map((targetId) =>
+					createNotification({
+						userId: targetId,
+						type: "MEETING_CANCELLED",
+						title: `"${meeting.title}" was cancelled`,
+						body: `${req.user.name} cancelled this meeting`,
+						from: userId,
+						link: null, // no link — dead meeting
+						meta: {
+							meetingId: meeting._id.toString(),
+							meetingCode: meeting.meetingCode,
+						},
+					}),
+				),
+			);
+		} catch (notifyErr) {
+			console.warn("cancel notifications failed:", notifyErr.message);
+		}
 
 		return res.status(200).json({
 			success: true,
@@ -653,6 +704,7 @@ const inviteUsers = async (req, res) => {
 					meta: {
 						meetingId: meeting._id.toString(),
 						meetingCode: meeting.meetingCode,
+						meetingStatus: meeting.status,
 					},
 				}),
 			),

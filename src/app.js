@@ -9,6 +9,7 @@ const userRouter = require("./routes/user.route");
 const meetingRouter = require('./routes/meeting.route')
 const friendRouter = require("./routes/friend.route");
 const notificationRouter = require("./routes/notification.route");
+const activityRouter = require("./routes/activity.route");
 
 // socket
 const { initSocket } = require("./socket/socket");
@@ -17,7 +18,6 @@ const server = express()
 const app = http.createServer(server); // wrapping Express in HTTP server
 
 // middleware
-// app.js
 const allowedOrigins = [
     process.env.FRONTEND_URI,
 ].filter(Boolean);
@@ -48,6 +48,7 @@ server.use("/api/user", userRouter);
 server.use("/api/meetings", meetingRouter);
 server.use("/api/friends", friendRouter);
 server.use("/api/notifications", notificationRouter);
+server.use("/api/activity", activityRouter);
 
 // socket.io
 initSocket(app)
