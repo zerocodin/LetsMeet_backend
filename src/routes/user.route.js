@@ -27,4 +27,7 @@ router.post("/me/email/request", userController.requestEmailUpdate);
 // update password
 router.patch("/me/password", userController.updatePassword);
 
+// stats
+router.get('/stats',userController.getUserStats)
+
 module.exports = router;

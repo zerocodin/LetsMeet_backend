@@ -1,5 +1,10 @@
 const bcrypt = require("bcryptjs")
 
+const friendRequestModel = require("../model/friend.model");
+const meetingModel = require("../model/meeting.model");
+const participantModel = require("../model/participant.model");
+const notificationModel = require("../model/notification.model");
+
 const userModel = require("../model/user.model")
 const imagekit = require("../utils/imagekit")
 const {sendOtpEmail} = require('../utils/mailer')
@@ -279,10 +284,80 @@ const updatePassword = async (req, res) => {
   }
 };
 
+/**
+ * @desc    Get aggregated stats for the current user
+ * @route   GET /api/user/stats
+ * @access  Private
+ */
+const getUserStats = async (req, res) => {
+	try {
+		const userId = req.user._id;
+		const now = new Date();
+		const sevenDaysFromNow = new Date(
+			now.getTime() + 7 * 24 * 60 * 60 * 1000
+		);
+
+		//  Friends 
+		const friendsCount = await friendRequestModel.countDocuments({
+			status: "ACCEPTED",
+			$or: [{ from: userId }, { to: userId }],
+		});
+
+		//  Meetings 
+		// (host OR joined) — dedupe via Set
+		const [hostedIds, joinedIds] = await Promise.all([
+			meetingModel.find({ host: userId }).distinct("_id"),
+			participantModel.find({ user: userId }).distinct("meeting"),
+		]);
+
+		const allMeetingIds = new Set([
+			...hostedIds.map((id) => id.toString()),
+			...joinedIds.map((id) => id.toString()),
+		]);
+
+		const meetingsCount = allMeetingIds.size;
+
+		//  Notifications 
+		const unreadNotifications = await notificationModel.countDocuments({
+			user: userId,
+			isRead: false,
+		});
+
+		//  Upcoming events (invited or participant or sheduled)
+		const upcomingEvents = await meetingModel.countDocuments({
+			$or: [
+				{ host: userId },
+				{ invitedUsers: userId },
+				{ _id: { $in: joinedIds } },
+			],
+			status: "SCHEDULED",
+			scheduledAt: { $gte: now, $lte: sevenDaysFromNow },
+		});
+
+		return res.status(200).json({
+			success: true,
+			data: {
+				friends: friendsCount,
+				meetings: meetingsCount,
+				notifications: unreadNotifications,
+				events: upcomingEvents,
+			},
+		});
+	} catch (err) {
+		console.error("getUserStats error:", err);
+		return res.status(500).json({
+			success: false,
+			message: "Failed to fetch stats",
+			error: err.message,
+		});
+	}
+};
+
 module.exports = {
   getProfile,
   updateProfile,
   updateProfileImage,
   requestEmailUpdate,
   updatePassword,
+  getUserStats
 };
