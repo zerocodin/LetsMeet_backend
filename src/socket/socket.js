@@ -282,6 +282,10 @@ const initSocket = (httpServer) => {
 			io.to(targetSocketId).emit("force-muted");
 		});
 
+		socket.on("host-ask-unmute-user", ({ targetSocketId }) => {
+			io.to(targetSocketId).emit("ask-unmute");
+		});
+
 		socket.on("host-kick-user", ({ targetSocketId }) => {
 			io.to(targetSocketId).emit("kicked");
 		});

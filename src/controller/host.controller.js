@@ -69,7 +69,7 @@ const muteParticipant = async (req, res) => {
 };
 
 /**
- * @desc    Host unmutes a participant
+ * @desc    Host asks a participant to unmute
  * @route   PATCH /api/meetings/:meetingId/participants/:participantId/unmute
  */
 const unmuteParticipant = async (req, res) => {
@@ -82,11 +82,12 @@ const unmuteParticipant = async (req, res) => {
 			return res.status(403).json({ success: false, message: auth.reason });
 		}
 
-		const participant = await participantModel.findOneAndUpdate(
-			{ _id: participantId, meeting: meetingId, leftAt: null },
-			{ $set: { isMuted: false } },
-			{ new: true },
-		);
+		// Just verify the target exists and is active — no state change
+		const participant = await participantModel.findOne({
+			_id: participantId,
+			meeting: meetingId,
+			leftAt: null,
+		});
 
 		if (!participant) {
 			return res.status(404).json({
@@ -97,14 +98,14 @@ const unmuteParticipant = async (req, res) => {
 
 		return res.status(200).json({
 			success: true,
-			message: "Participant unmuted",
-			data: { participantId, isMuted: false },
+			message: "Unmute request sent",
+			data: { participantId, requestedUnmute: true },
 		});
 	} catch (err) {
 		console.error("unmuteParticipant error:", err);
 		return res.status(500).json({
 			success: false,
-			message: "Failed to unmute participant",
+			message: "Failed to request unmute",
 			error: err.message,
 		});
 	}
@@ -304,7 +305,7 @@ const stopScreenShare = async (req, res) => {
 		const participant = await participantModel.findOneAndUpdate(
 			{ _id: participantId, meeting: meetingId, leftAt: null },
 			{ $set: { isScreenSharing: false } },
-			{ returnDocument: "after" }
+			{ returnDocument: "after" },
 		);
 
 		if (!participant) {
