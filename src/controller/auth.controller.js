@@ -13,7 +13,7 @@ const cookieOptions = {
 	sameSite: isProd ? "none" : "lax",
 	maxAge: 7 * 24 * 60 * 60 * 1000,
 	path:"/",
-	...(isProd && { partitioned: true }),
+	// ...(isProd && { partitioned: true }),
 };
 
 const flagCookieOptions = {
@@ -22,7 +22,7 @@ const flagCookieOptions = {
 	sameSite: isProd ? "none" : "lax",
 	maxAge: 7 * 24 * 60 * 60 * 1000,
 	path:"/",
-	...(isProd && { partitioned: true }),
+	// ...(isProd && { partitioned: true }),
 };
 
 const userRegister = async (req, res) => {
