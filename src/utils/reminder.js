@@ -79,9 +79,7 @@ const checkUpcomingMeetings = async () => {
 						userId,
 						type: "MEETING_STARTING",
 						title: `"${meeting.title}" starts soon`,
-						body: `Starting at ${timeLabel} — about ${minutesUntil} minute${
-							minutesUntil === 1 ? "" : "s"
-						} from now.`,
+						body: ``,
 						from: meeting.host,
 						link,
 						meta: {
@@ -89,6 +87,7 @@ const checkUpcomingMeetings = async () => {
 							meetingCode: meeting.meetingCode,
 							meetingStatus: "SCHEDULED",
 							minutesUntil,
+							scheduledAt: meeting.scheduledAt.toISOString(),
 						},
 					})
 				)
