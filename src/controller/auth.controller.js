@@ -5,14 +5,14 @@ const userModel = require("../model/user.model");
 const getToken = require("../utils/getToken");
 
 const isProd = process.env.NODE_ENV === "production";
-const cookieDomain = process.env.COOKIE_DOMAIN
+const cookieDomain = process.env.COOKIE_DOMAIN;
 
 const cookieOptions = {
 	httpOnly: true,
 	secure: isProd ? true : false,
 	sameSite: isProd ? "none" : "lax",
 	maxAge: 7 * 24 * 60 * 60 * 1000,
-	path:"/",
+	path: "/",
 	// ...(isProd && { partitioned: true }),
 };
 
@@ -21,7 +21,7 @@ const flagCookieOptions = {
 	secure: isProd ? true : false,
 	sameSite: isProd ? "none" : "lax",
 	maxAge: 7 * 24 * 60 * 60 * 1000,
-	path:"/",
+	path: "/",
 	// ...(isProd && { partitioned: true }),
 };
 
@@ -64,12 +64,15 @@ const userRegister = async (req, res) => {
 			username,
 			email,
 			password: hashedPassword,
+			isVerified: true, // ← auto-verified
+			emailStatus: "VERIFIED", // ← so login allows them in
 		});
 
 		await user.save();
 
 		return res.status(201).json({
-			message: "Verify you email address",
+			// message: "Verify you email address",
+			message:"Accouont created successfully.",
 			success: true,
 		});
 	} catch (error) {
@@ -290,7 +293,7 @@ const getMe = async (req, res) => {
 			message: "Logged in successfully",
 			success: true,
 			user: {
-				_id:user._id,
+				_id: user._id,
 				name: user.name,
 				username: user.username,
 				profileImage: user.profileImage,
