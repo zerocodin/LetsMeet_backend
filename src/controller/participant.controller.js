@@ -206,6 +206,7 @@ const joinMeeting = async (req, res) => {
 					isMuted: participant.isMuted,
 					isCameraOff: participant.isCameraOff,
 					isScreenSharing: participant.isScreenSharing,
+					handRaised: participant.handRaised,
 				},
 			},
 		});
@@ -277,7 +278,7 @@ const updateMyState = async (req, res) => {
 	try {
 		const { meetingId } = req.params;
 		const userId = req.user._id;
-		const { isMuted, isCameraOff, isScreenSharing } = req.body;
+		const { isMuted, isCameraOff, isScreenSharing, handRaised } = req.body;
 
 		// Build partial update — only allow known fields
 		const updates = {};
@@ -285,12 +286,13 @@ const updateMyState = async (req, res) => {
 		if (typeof isCameraOff === "boolean") updates.isCameraOff = isCameraOff;
 		if (typeof isScreenSharing === "boolean")
 			updates.isScreenSharing = isScreenSharing;
+		if (typeof handRaised === "boolean") updates.handRaised = handRaised;
 
 		if (Object.keys(updates).length === 0) {
 			return res.status(400).json({
 				success: false,
 				message:
-					"Provide at least one of: isMuted, isCameraOff, isScreenSharing",
+					"Provide at least one of: isMuted, isCameraOff, isScreenSharing, handRaised",
 			});
 		}
 

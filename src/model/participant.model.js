@@ -60,6 +60,7 @@ const participantSchema = new mongoose.Schema(
 		isMuted: { type: Boolean, default: true },
 		isCameraOff: { type: Boolean, default: true },
 		isScreenSharing: { type: Boolean, default: false },
+		handRaised: { type: Boolean, default: false },
 	},
 	{ timestamps: true }
 );

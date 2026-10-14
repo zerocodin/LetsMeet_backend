@@ -106,6 +106,7 @@ const initSocket = (httpServer) => {
 					isMuted: participant.isMuted,
 					isCameraOff: participant.isCameraOff,
 					isScreenSharing: participant.isScreenSharing,
+					handRaised: participant.handRaised,
 				});
 
 				// Send existing participants list to the new joiner
@@ -122,6 +123,7 @@ const initSocket = (httpServer) => {
 						isMuted: p.isMuted,
 						isCameraOff: p.isCameraOff,
 						isScreenSharing: p.isScreenSharing,
+						handRaised: p.handRaised,
 					}));
 
 				callback?.({
@@ -146,6 +148,7 @@ const initSocket = (httpServer) => {
 					isMuted: participant.isMuted,
 					isCameraOff: participant.isCameraOff,
 					isScreenSharing: participant.isScreenSharing,
+					handRaised: participant.handRaised,
 				});
 			} catch (err) {
 				console.error("join-meeting error:", err);
@@ -220,6 +223,21 @@ const initSocket = (httpServer) => {
 				socketId: socket.id,
 				userId: socket.user._id,
 				isScreenSharing,
+			});
+		});
+
+		socket.on("toggle-hand", ({ handRaised }) => {
+			const roomName = `meeting:${socket.meetingId}`;
+			if (!socket.meetingId) return;
+
+			const room = rooms.get(socket.meetingId);
+			const entry = room?.get(socket.user._id.toString());
+			if (entry) entry.handRaised = handRaised;
+
+			socket.to(roomName).emit("participant-state-changed", {
+				socketId: socket.id,
+				userId: socket.user._id,
+				handRaised,
 			});
 		});
 
