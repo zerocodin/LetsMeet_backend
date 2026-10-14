@@ -168,6 +168,7 @@ const getActivityFeed = async (req, res) => {
 				subtitle: n.body,
 				link: n.link || null,
 				meta: {
+					...n.meta,
 					from: n.from
 						? {
 								name: n.from.name,
