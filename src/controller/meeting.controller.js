@@ -96,18 +96,15 @@ const createMeeting = async (req, res) => {
 						userId: u._id,
 						type: "MEETING_INVITE",
 						title: `You're invited to "${meeting.title}"`,
-						body: `${req.user.name} invited you to a meeting on ${new Date(
-							meeting.scheduledAt,
-						).toLocaleString(undefined, {
-							dateStyle: "medium",
-							timeStyle: "short",
-						})}`,
+						body: ``,
 						from: req.user._id,
 						link: `/meeting/${meeting.meetingCode}`,
 						meta: {
 							meetingId: meeting._id.toString(),
 							meetingCode: meeting.meetingCode,
 							meetingStatus: meeting.status,
+							scheduledAt: meeting.scheduledAt.toISOString(),
+        					inviterName: req.user.name,
 						},
 					}),
 				),
@@ -693,18 +690,15 @@ const inviteUsers = async (req, res) => {
 					userId: u._id,
 					type: "MEETING_INVITE",
 					title: `You're invited to "${meeting.title}"`,
-					body: `${req.user.name} invited you to a meeting on ${new Date(
-						meeting.scheduledAt,
-					).toLocaleString(undefined, {
-						dateStyle: "medium",
-						timeStyle: "short",
-					})}`,
+					body: ``,
 					from: hostId,
 					link: `/meeting/${meeting.meetingCode}`,
 					meta: {
 						meetingId: meeting._id.toString(),
 						meetingCode: meeting.meetingCode,
 						meetingStatus: meeting.status,
+						scheduledAt: meeting.scheduledAt.toISOString(),
+        				inviterName: req.user.name,
 					},
 				}),
 			),
