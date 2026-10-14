@@ -26,6 +26,12 @@ router.get("/:meetingId/participants", protect, joinMeeting.getParticipants);
 
 // host controls
 router.patch(
+	"/:meetingId/participants/mute-all",
+	protect,
+	host.muteAllParticipants,
+);
+
+router.patch(
 	"/:meetingId/participants/:participantId/mute",
 	protect,
 	host.muteParticipant,
@@ -53,7 +59,7 @@ router.delete(
 router.post(
 	"/:meetingId/participants/:participantId/stop-share",
 	protect,
-	host.stopScreenShare
+	host.stopScreenShare,
 );
 
 // Chat history + delete
@@ -66,10 +72,10 @@ router.delete("/:meetingId/invite/:userId", protect, meeting.removeInvite);
 router.get(
 	"/:meetingId/invite/candidates",
 	protect,
-	meeting.getInviteCandidates
+	meeting.getInviteCandidates,
 );
 
-router.post("/:meetingId/start-now", protect, meeting.startMeetingNow); 
+router.post("/:meetingId/start-now", protect, meeting.startMeetingNow);
 
 // meeting generic routes
 router.get("/:meetingId", protect, meeting.getMeetingById);

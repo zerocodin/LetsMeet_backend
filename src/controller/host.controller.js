@@ -330,6 +330,46 @@ const stopScreenShare = async (req, res) => {
 	}
 };
 
+/**
+ * @desc    Host mutes every active participant (except themselves)
+ * @route   PATCH /api/meetings/:meetingId/participants/mute-all
+ * @access  Private (host or cohost)
+ */
+const muteAllParticipants = async (req, res) => {
+	try {
+		const { meetingId } = req.params;
+		const userId = req.user._id;
+
+		const auth = await checkHostOrCohost(meetingId, userId);
+		if (!auth.ok) {
+			return res.status(403).json({ success: false, message: auth.reason });
+		}
+
+		// Mute everyone except the caller
+		const result = await participantModel.updateMany(
+			{
+				meeting: meetingId,
+				leftAt: null,
+				user: { $ne: userId },
+			},
+			{ $set: { isMuted: true } },
+		);
+
+		return res.status(200).json({
+			success: true,
+			message: `Muted ${result.modifiedCount} participant(s)`,
+			data: { mutedCount: result.modifiedCount },
+		});
+	} catch (err) {
+		console.error("muteAllParticipants error:", err);
+		return res.status(500).json({
+			success: false,
+			message: "Failed to mute all participants",
+			error: err.message,
+		});
+	}
+};
+
 module.exports = {
 	muteParticipant,
 	unmuteParticipant,
@@ -337,4 +377,5 @@ module.exports = {
 	promoteToCohost,
 	demoteFromCohost,
 	stopScreenShare,
+	muteAllParticipants,
 };
